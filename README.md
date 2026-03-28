@@ -1,3 +1,5 @@
+Live Link: https://act-assignment-hwpe.vercel.app/login
+
 # 🚀 MERN Dashboard App
 
 A full-stack **MERN** (MongoDB, Express, React, Node.js) web application featuring JWT-based authentication, protected routes, and a premium data-rich dashboard.
