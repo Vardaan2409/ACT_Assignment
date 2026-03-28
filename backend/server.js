@@ -23,6 +23,11 @@ const dashboardRoutes = require('./routes/dashboard');
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
+// Health check route
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'MERN Dashboard API is running 🚀' });
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
