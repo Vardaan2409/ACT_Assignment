@@ -12,9 +12,17 @@ app.use(cors());
 app.use(express.json());
 
 // Database connection
+if (!process.env.MONGO_URI) {
+  console.error('❌ FATAL ERROR: MONGO_URI is not defined in environment variables.');
+  process.exit(1);
+}
+
 mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.error('MongoDB connection error:', err));
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.error('Check if your MONGO_URI is correct and IP is whitelisted in Atlas.');
+  });
 
 // Routes
 const authRoutes = require('./routes/auth');

@@ -35,8 +35,11 @@ router.get('/', protect, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching dashboard data:', error);
-    res.status(500).json({ message: 'Server error fetching dashboard data' });
+    console.error('Error fetching dashboard data:', error.message);
+    res.status(500).json({ 
+      message: 'Server error fetching dashboard data. Check DB connection.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
