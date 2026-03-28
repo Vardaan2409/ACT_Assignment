@@ -68,22 +68,33 @@ Assignment/
 
 ## 🛠️ Setup Instructions
 
-### 1. Clone or navigate to the project
+> **Note:** `node_modules` and `.env` files are **not included** in this repository. Follow all steps below to get the project running from scratch.
+
+---
+
+### 1. Clone the Repository
 
 ```bash
-cd Assignment
+git clone https://github.com/Vardaan2409/ACT_Assignment.git
+cd ACT_Assignment
 ```
 
-### 2. Configure the Backend
+---
 
-Navigate to the `backend` folder and set up your environment variables:
+### 2. Backend Setup
 
+#### a) Go to the backend folder
 ```bash
 cd backend
 ```
 
-Open `.env` and fill in your values:
+#### b) Install dependencies
+```bash
+npm install
+```
 
+#### c) Create the `.env` file
+Create a new file called `.env` inside the `backend/` folder:
 ```env
 PORT=5000
 MONGO_URI=your_mongodb_atlas_connection_string_here
@@ -92,16 +103,9 @@ NODE_ENV=development
 ```
 
 > **Tip:** To get your `MONGO_URI`, go to [MongoDB Atlas](https://cloud.mongodb.com/) → Connect → Drivers → Copy the connection string.
+> Make sure your IP is whitelisted in MongoDB Atlas → Network Access.
 
-### 3. Install Backend Dependencies
-
-```bash
-cd backend
-npm install
-```
-
-### 4. Seed the Database
-
+#### d) Seed the Database
 Populate MongoDB with initial Users, Leads, and Tasks:
 
 ```bash
@@ -116,14 +120,30 @@ You should see:
 🚀 Database Seeded Successfully!
 ```
 
-### 5. Install Frontend Dependencies
+---
 
+### 3. Frontend Setup
+
+#### a) Go to the frontend folder
 ```bash
 cd ../frontend
+```
+
+#### b) Install dependencies
+```bash
 npm install
 ```
 
+#### c) Create the `.env` file
+Create a new file called `.env` inside the `frontend/` folder:
+```env
+VITE_API_URL=http://localhost:5000
+```
+
+> For production deployment (e.g. Vercel), change this to your deployed backend URL.
+
 ---
+
 
 ## ▶️ Running the Application
 
