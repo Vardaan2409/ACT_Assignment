@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://act-assignment-wg3e.onrender.com',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
     },

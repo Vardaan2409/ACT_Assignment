@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import { 
@@ -28,7 +28,7 @@ const Dashboard = () => {
             Authorization: `Bearer ${user.token}`,
           },
         };
-        const { data } = await axios.get('/api/dashboard', config);
+        const { data } = await API.get('/api/dashboard', config);
         setData(data);
         setLoading(false);
       } catch (err) {
