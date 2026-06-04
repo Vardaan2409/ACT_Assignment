@@ -20,11 +20,18 @@ import {
   Activity,
   ArrowUpRight,
   Award,
-  RefreshCw
+  RefreshCw,
+  Home,
+  Zap,
+  MapPin,
+  PlusCircle,
+  ChevronRight,
+  TrendingDown,
+  BarChart4
 } from 'lucide-react';
 
 const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'billing', 'analytics'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'billing', 'analytics', 'properties', 'boosts'
   const [data, setData] = useState({ leads: [], tasks: [], users: [] });
   const [billing, setBilling] = useState({
     subscription: { plan: 'Free', status: 'active', startDate: new Date(), endDate: null },
@@ -34,12 +41,32 @@ const Dashboard = () => {
   });
   const [analytics, setAnalytics] = useState(null);
   
+  // Properties state
+  const [properties, setProperties] = useState([]);
+  const [myBoosts, setMyBoosts] = useState({ listings: [], boostConfig: {} });
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  
+  // Modals / Selection states
   const [showMockModal, setShowMockModal] = useState(false);
   const [mockOrderDetails, setMockOrderDetails] = useState(null);
+  const [mockType, setMockType] = useState('subscription'); // 'subscription' or 'boost'
+  
+  const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
+  const [newProperty, setNewProperty] = useState({
+    title: '',
+    description: '',
+    price: '',
+    location: '',
+    isVerified: false,
+    isOwnerListed: false
+  });
+
+  const [showBoostModal, setShowBoostModal] = useState(false);
+  const [selectedPropertyForBoost, setSelectedPropertyForBoost] = useState(null);
 
   const { user } = useAuth();
 
@@ -75,10 +102,35 @@ const Dashboard = () => {
     }
   };
 
+  const fetchPropertiesData = async () => {
+    try {
+      const { data } = await API.get('/api/properties');
+      setProperties(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchMyBoostsData = async () => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+      const { data } = await API.get('/api/properties/my-boosts', config);
+      setMyBoosts(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await Promise.all([fetchDashboardData(), fetchBillingData(), fetchAnalyticsData()]);
+      await Promise.all([
+        fetchDashboardData(),
+        fetchBillingData(),
+        fetchAnalyticsData(),
+        fetchPropertiesData(),
+        fetchMyBoostsData()
+      ]);
       setLoading(false);
     };
     init();
@@ -97,7 +149,7 @@ const Dashboard = () => {
       );
 
       if (orderData.isMock) {
-        // Handle mock mode payment
+        setMockType('subscription');
         setMockOrderDetails({
           ...orderData,
           plan: planName
@@ -118,7 +170,7 @@ const Dashboard = () => {
         handler: async function (response) {
           try {
             setPaymentLoading(true);
-            const { data: verifyData } = await API.post(
+            await API.post(
               '/api/subscription/verify-payment',
               {
                 razorpay_order_id: response.razorpay_order_id,
@@ -127,9 +179,8 @@ const Dashboard = () => {
               },
               config
             );
-            // Refresh data
             await Promise.all([fetchBillingData(), fetchAnalyticsData()]);
-            alert(verifyData.message || 'Payment verified and Subscription updated!');
+            alert('Subscription payment verified successfully! 🚀');
           } catch (err) {
             console.error(err);
             setError(err.response?.data?.message || 'Verification failed');
@@ -137,25 +188,112 @@ const Dashboard = () => {
             setPaymentLoading(false);
           }
         },
-        prefill: {
-          name: user.name,
-          email: user.email,
-        },
-        theme: {
-          color: '#4f46e5'
-        }
+        prefill: { name: user.name, email: user.email },
+        theme: { color: '#4f46e5' }
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response) {
-        alert('Payment failed: ' + response.error.description);
-        setPaymentLoading(false);
-      });
       rzp.open();
-
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || 'Error initializing subscription checkout');
+      setError('Error initializing subscription checkout');
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleAddProperty = async (e) => {
+    e.preventDefault();
+    try {
+      setError('');
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+      await API.post('/api/properties', newProperty, config);
+      setShowAddPropertyModal(false);
+      setNewProperty({
+        title: '',
+        description: '',
+        price: '',
+        location: '',
+        isVerified: false,
+        isOwnerListed: false
+      });
+      await Promise.all([fetchPropertiesData(), fetchMyBoostsData()]);
+      alert('Property published successfully!');
+    } catch (err) {
+      console.error(err);
+      setError('Failed to publish listing');
+    }
+  };
+
+  const handleTriggerBoost = async (property) => {
+    setSelectedPropertyForBoost(property);
+    setShowBoostModal(true);
+  };
+
+  const handlePurchaseBoost = async (boostType) => {
+    try {
+      setError('');
+      setPaymentLoading(true);
+      setShowBoostModal(false);
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+
+      const { data: orderData } = await API.post(
+        '/api/properties/boost/create-order',
+        { propertyId: selectedPropertyForBoost._id, boostType },
+        config
+      );
+
+      if (orderData.isMock) {
+        setMockType('boost');
+        setMockOrderDetails({
+          ...orderData,
+          boostType
+        });
+        setPaymentLoading(false);
+        setShowMockModal(true);
+        return;
+      }
+
+      // Handle Real Razorpay Checkout for boosts
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'Property Listing Boost',
+        description: `Unlock ${boostType} Visibility`,
+        order_id: orderData.orderId,
+        handler: async function (response) {
+          try {
+            setPaymentLoading(true);
+            await API.post(
+              '/api/properties/boost/verify',
+              {
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                propertyId: orderData.propertyId,
+                boostType: orderData.boostType
+              },
+              config
+            );
+            await Promise.all([fetchPropertiesData(), fetchMyBoostsData(), fetchAnalyticsData()]);
+            alert('Payment verified and Listing Boosted successfully! ⚡');
+          } catch (err) {
+            console.error(err);
+            setError('Verification failed');
+          } finally {
+            setPaymentLoading(false);
+            setSelectedPropertyForBoost(null);
+          }
+        },
+        prefill: { name: user.name, email: user.email },
+        theme: { color: '#4f46e5' }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      console.error(err);
+      setError('Error initiating boost payment');
       setPaymentLoading(false);
     }
   };
@@ -166,24 +304,49 @@ const Dashboard = () => {
       setPaymentLoading(true);
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
       
-      const { data: verifyData } = await API.post(
-        '/api/subscription/verify-payment',
-        {
-          razorpay_order_id: mockOrderDetails.orderId,
-          razorpay_payment_id: 'pay_mock_' + Math.random().toString(36).substring(7),
-          razorpay_signature: 'mock_signature_verified',
-        },
-        config
-      );
-      
-      await Promise.all([fetchBillingData(), fetchAnalyticsData()]);
-      alert(verifyData.message || 'Mock payment verified successfully!');
+      if (mockType === 'subscription') {
+        const { data: verifyData } = await API.post(
+          '/api/subscription/verify-payment',
+          {
+            razorpay_order_id: mockOrderDetails.orderId,
+            razorpay_payment_id: 'pay_mock_' + Math.random().toString(36).substring(7),
+            razorpay_signature: 'mock_signature_verified',
+          },
+          config
+        );
+        await Promise.all([fetchBillingData(), fetchAnalyticsData()]);
+        alert(verifyData.message || 'Mock payment verified successfully!');
+      } else if (mockType === 'boost') {
+        const { data: verifyData } = await API.post(
+          '/api/properties/boost/verify',
+          {
+            razorpay_order_id: mockOrderDetails.orderId,
+            razorpay_payment_id: 'pay_mock_' + Math.random().toString(36).substring(7),
+            razorpay_signature: 'mock_signature_verified',
+            propertyId: mockOrderDetails.propertyId,
+            boostType: mockOrderDetails.boostType
+          },
+          config
+        );
+        await Promise.all([fetchPropertiesData(), fetchMyBoostsData(), fetchAnalyticsData()]);
+        alert(verifyData.message || 'Mock boost payment verified successfully! ⚡');
+      }
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || 'Mock verification failed');
+      setError('Mock verification failed');
     } finally {
       setPaymentLoading(false);
       setMockOrderDetails(null);
+      setSelectedPropertyForBoost(null);
+    }
+  };
+
+  const trackInteraction = async (propertyId, action) => {
+    try {
+      await API.post(`/api/properties/${propertyId}/interact`, { action });
+      await fetchPropertiesData();
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -194,7 +357,7 @@ const Dashboard = () => {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center space-y-4">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-200 border-t-indigo-600"></div>
-            <p className="text-slate-500 font-medium">Loading subscription dashboard...</p>
+            <p className="text-slate-500 font-medium">Loading workspace...</p>
           </div>
         </div>
       </div>
@@ -218,10 +381,10 @@ const Dashboard = () => {
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              Subscription Management Workspace
+              CRM & Subscriptions Dashboard
             </h1>
             <p className="text-slate-500 mt-1 font-medium">
-              Manage your credentials, payments, subscriptions, and analytical reporting.
+              Manage listings, payments, boosts, and platforms analytics.
             </p>
           </div>
           <div className="flex items-center space-x-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
@@ -233,7 +396,7 @@ const Dashboard = () => {
         </div>
 
         {/* Tab Toggle Navigation */}
-        <div className="flex border-b border-slate-200 mb-8 space-x-8">
+        <div className="flex overflow-x-auto whitespace-nowrap border-b border-slate-200 mb-8 space-x-8 scrollbar-none">
           <button
             onClick={() => setActiveTab('overview')}
             className={`pb-4 text-sm font-bold tracking-wide transition-all ${
@@ -242,8 +405,33 @@ const Dashboard = () => {
                 : 'text-slate-500 hover:text-slate-900'
             }`}
           >
-            📊 WorkSpace Overview
+            📊 Workspace Overview
           </button>
+          
+          <button
+            onClick={() => setActiveTab('properties')}
+            className={`pb-4 text-sm font-bold tracking-wide transition-all flex items-center space-x-1.5 ${
+              activeTab === 'properties'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Home className="w-4 h-4" />
+            <span>🏠 Property Marketplace</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('boosts')}
+            className={`pb-4 text-sm font-bold tracking-wide transition-all flex items-center space-x-1.5 ${
+              activeTab === 'boosts'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>⚡ Boost Dashboard</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('billing')}
             className={`pb-4 text-sm font-bold tracking-wide transition-all flex items-center space-x-1.5 ${
@@ -255,6 +443,7 @@ const Dashboard = () => {
             <CreditCard className="w-4 h-4" />
             <span>💳 Billing & Subscriptions</span>
           </button>
+          
           <button
             onClick={() => setActiveTab('analytics')}
             className={`pb-4 text-sm font-bold tracking-wide transition-all flex items-center space-x-1.5 ${
@@ -275,10 +464,9 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* --- OVERVIEW TAB --- */}
+        {/* --- WORKSPACE OVERVIEW TAB --- */}
         {activeTab === 'overview' && (
           <div>
-            {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <StatCard
                 title="Total Leads"
@@ -304,7 +492,6 @@ const Dashboard = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Leads Table */}
               <section className="bg-white rounded-3xl shadow-xl shadow-slate-200 border border-slate-100 overflow-hidden">
                 <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -350,7 +537,6 @@ const Dashboard = () => {
                 </div>
               </section>
 
-              {/* Tasks List */}
               <section className="bg-white rounded-3xl shadow-xl shadow-slate-200 border border-slate-100 overflow-hidden flex flex-col">
                 <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -384,35 +570,280 @@ const Dashboard = () => {
                   ))}
                 </div>
               </section>
+            </div>
+          </div>
+        )}
 
-              {/* User List */}
-              <section className="bg-white rounded-3xl shadow-xl shadow-slate-200 border border-slate-100 lg:col-span-2 overflow-hidden mb-8">
-                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-amber-50 rounded-xl">
-                      <ShieldCheck className="w-5 h-5 text-amber-600" />
+        {/* --- PROPERTIES MARKETPLACE TAB --- */}
+        {activeTab === 'properties' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-100 shadow-xl shadow-slate-100">
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Active Listings</h2>
+                <p className="text-sm text-slate-500 font-medium mt-0.5">
+                  Properties sorted dynamically by their search ranking index scores.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddPropertyModal(true)}
+                className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-3 rounded-2xl shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]"
+              >
+                <PlusCircle className="w-5 h-5" />
+                <span>Create Listing</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {properties.map((prop, idx) => (
+                <div
+                  key={prop._id}
+                  className={`bg-white rounded-3xl border overflow-hidden shadow-xl shadow-slate-100 flex flex-col justify-between transition-all relative ${
+                    prop.activeBoost 
+                      ? 'border-indigo-400 shadow-indigo-50/50 ring-2 ring-indigo-100' 
+                      : 'border-slate-100 hover:border-slate-200'
+                  }`}
+                >
+                  {/* Position Badge / Score badge */}
+                  <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-2">
+                    <span className="bg-slate-900/80 backdrop-blur-md text-white font-bold text-xs px-3 py-1.5 rounded-full flex items-center shadow-sm">
+                      Rank #{idx + 1}
+                    </span>
+                    <span className="bg-indigo-600 text-white font-extrabold text-xs px-3 py-1.5 rounded-full shadow-md">
+                      Score: {prop.rankingScore}
+                    </span>
+                    {prop.activeBoost && (
+                      <span className="bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 font-black text-xs px-3 py-1.5 rounded-full flex items-center shadow-md animate-pulse">
+                        <Zap className="w-3.5 h-3.5 mr-1 fill-slate-900" />
+                        <span>{prop.activeBoost.boostType}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="p-8 space-y-4">
+                    <div className="pt-6">
+                      <div className="flex items-center space-x-2 text-slate-400 text-xs font-bold mb-1">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>{prop.location}</span>
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 leading-tight">{prop.title}</h3>
+                      <p className="text-slate-500 text-xs mt-1.5 line-clamp-2 leading-relaxed">{prop.description}</p>
                     </div>
-                    <h2 className="text-xl font-bold text-slate-800 tracking-tight">Our Team</h2>
+
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {prop.isVerified && (
+                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-extrabold text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          ✓ Verified (+20)
+                        </span>
+                      )}
+                      {prop.isOwnerListed && (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-100 font-extrabold text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          👤 Owner Listed (+15)
+                        </span>
+                      )}
+                      {Math.ceil(Math.abs(new Date() - new Date(prop.createdAt)) / (1000 * 60 * 60 * 24)) <= 7 && (
+                        <span className="bg-blue-50 text-blue-700 border border-blue-100 font-extrabold text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          🕒 New Listing (+10)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center border-t border-slate-100 pt-4">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-bold uppercase">Asking Price</span>
+                        <span className="text-2xl font-black text-slate-950">₹{(prop.price / 10000000).toFixed(2)} Cr</span>
+                      </div>
+                      
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-bold uppercase">Impressions</span>
+                        <span className="text-base font-extrabold text-slate-700">{prop.impressions}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-4 border-t border-slate-100 flex space-x-3">
+                    <button
+                      onClick={() => {
+                        trackInteraction(prop._id, 'click');
+                        alert('Listing click tracked! Analytics improved.');
+                      }}
+                      className="flex-1 py-3 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all"
+                    >
+                      View Property Details
+                    </button>
+                    
+                    <button
+                      onClick={() => handleTriggerBoost(prop)}
+                      className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-100 flex justify-center items-center space-x-1.5 transition-all"
+                    >
+                      <Zap className="w-4 h-4 fill-white" />
+                      <span>Boost Listing Visibility</span>
+                    </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
-                  {data.users.map((teamMember) => (
-                    <div key={teamMember.id} className="p-6 flex items-center space-x-4 hover:bg-slate-50 transition-colors group cursor-default">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center border-2 border-white shadow-sm overflow-hidden transform group-hover:scale-110 transition-transform">
-                        <span className="text-lg font-extrabold text-slate-400">{teamMember.name.charAt(0)}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* --- BOOST PERFORMANCE DASHBOARD TAB --- */}
+        {activeTab === 'boosts' && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Boost Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-amber-500 to-yellow-600 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold opacity-80 uppercase block">Active boosted listings</span>
+                  <h3 className="text-3xl font-extrabold mt-1">
+                    {myBoosts.listings.filter(l => l.activeBoost).length} Listings
+                  </h3>
+                  <span className="text-[10px] block font-semibold mt-1 bg-white/20 px-2 py-0.5 rounded-full w-max">
+                    Enhanced indexing rank active
+                  </span>
+                </div>
+                <Zap className="w-12 h-12 fill-white opacity-20" />
+              </div>
+
+              <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold opacity-80 uppercase block">Total Boost Clicks</span>
+                  <h3 className="text-3xl font-extrabold mt-1">
+                    {myBoosts.listings.reduce((sum, l) => sum + (l.activeBoost ? l.clicks : 0), 0)} Clicks
+                  </h3>
+                  <span className="text-[10px] block font-semibold mt-1">
+                    Direct user interaction tracking
+                  </span>
+                </div>
+                <TrendingUp className="w-12 h-12 opacity-20" />
+              </div>
+
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold opacity-80 uppercase block">Estimated Leads Increase</span>
+                  <h3 className="text-3xl font-extrabold mt-1">
+                    +{myBoosts.listings.filter(l => l.activeBoost).length * 125}%
+                  </h3>
+                  <span className="text-[10px] block font-semibold mt-1">
+                    Across all premium exposures
+                  </span>
+                </div>
+                <BarChart4 className="w-12 h-12 opacity-20" />
+              </div>
+            </div>
+
+            {/* Performance Listings Analysis */}
+            <div className="bg-white rounded-3xl shadow-xl shadow-slate-100 border border-slate-100 overflow-hidden">
+              <div className="px-6 py-5 border-b border-slate-100">
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">Boost Tracker & Metrics</h3>
+              </div>
+              
+              {myBoosts.listings.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 font-semibold">
+                  You have not published any properties yet. Navigate to Marketplace to add a listing.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {myBoosts.listings.map(listing => (
+                    <div key={listing._id} className="p-6 md:p-8 hover:bg-slate-50/50 transition-colors flex flex-col lg:flex-row justify-between lg:items-center space-y-6 lg:space-y-0">
+                      
+                      {/* Left Info */}
+                      <div className="space-y-2.5">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="text-lg font-bold text-slate-900">{listing.title}</h4>
+                          {listing.activeBoost ? (
+                            <span className="bg-amber-100 text-amber-700 border border-amber-200 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full flex items-center">
+                              <Zap className="w-3 h-3 mr-0.5 fill-amber-700" />
+                              <span>{listing.activeBoost.boostType}</span>
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-500 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full">
+                              Unboosted
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center space-x-4 text-xs text-slate-400 font-bold">
+                          <span className="flex items-center">
+                            <MapPin className="w-3.5 h-3.5 mr-1 text-indigo-500" />
+                            <span>{listing.location}</span>
+                          </span>
+                          <span>•</span>
+                          <span>Asking Price: ₹{(listing.price / 10000000).toFixed(2)} Cr</span>
+                        </div>
+
+                        {listing.activeBoost ? (
+                          <div className="text-xs text-indigo-600 font-bold flex items-center">
+                            <Clock className="w-4 h-4 mr-1" />
+                            <span>Expires in <span className="underline">{listing.remainingDays} days</span> ({new Date(listing.activeBoost.endDate).toLocaleDateString()})</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-400 font-semibold italic">
+                            No active visibility boosts. This listing displays in standard organic ranks.
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">{teamMember.name}</h4>
-                        <p className="text-xs font-semibold text-slate-400 italic">{teamMember.role}</p>
-                        <div className="flex items-center mt-1.5">
-                          <div className={`w-2 h-2 rounded-full mr-1.5 ${teamMember.status === 'Active' ? 'bg-emerald-500 shadow-emerald-200 shadow-lg' : 'bg-slate-300'}`} />
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{teamMember.status}</span>
+
+                      {/* Performance Indicators */}
+                      <div className="flex flex-wrap gap-6 items-center">
+                        <div className="bg-white p-3.5 rounded-2xl border border-slate-100 text-center min-w-[90px] shadow-sm">
+                          <span className="text-[10px] text-slate-400 block font-bold uppercase">Impressions</span>
+                          <span className="text-lg font-black text-slate-900 mt-0.5 block">{listing.impressions}</span>
+                          {listing.activeBoost && (
+                            <span className="text-[9px] text-emerald-600 font-bold">+{listing.analytics?.impressionGain} boost</span>
+                          )}
+                        </div>
+
+                        <div className="bg-white p-3.5 rounded-2xl border border-slate-100 text-center min-w-[90px] shadow-sm">
+                          <span className="text-[10px] text-slate-400 block font-bold uppercase">Clicks</span>
+                          <span className="text-lg font-black text-slate-900 mt-0.5 block">{listing.clicks}</span>
+                          {listing.activeBoost && (
+                            <span className="text-[9px] text-emerald-600 font-bold">+{listing.analytics?.clickGain} boost</span>
+                          )}
+                        </div>
+
+                        <div className="bg-white p-3.5 rounded-2xl border border-slate-100 text-center min-w-[90px] shadow-sm">
+                          <span className="text-[10px] text-slate-400 block font-bold uppercase">Leads Count</span>
+                          <span className="text-lg font-black text-slate-900 mt-0.5 block">{listing.leadsCount}</span>
+                          {listing.activeBoost && (
+                            <span className="text-[9px] text-emerald-600 font-bold">+{listing.analytics?.leadGain} conversion</span>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-col space-y-1.5 min-w-[130px]">
+                          {listing.activeBoost ? (
+                            <button
+                              onClick={() => handleTriggerBoost(listing)}
+                              className="py-2.5 px-4 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold text-center transition-all"
+                            >
+                              Extend Boost
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleTriggerBoost(listing)}
+                              className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center space-x-1 shadow-md shadow-indigo-50 transition-all"
+                            >
+                              <Zap className="w-3.5 h-3.5 fill-white" />
+                              <span>Boost Listing</span>
+                            </button>
+                          )}
+                          
+                          <button
+                            onClick={() => {
+                              trackInteraction(listing._id, 'lead');
+                              alert('Listing lead interaction simulated!');
+                              fetchMyBoostsData();
+                            }}
+                            className="py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold text-center transition-all"
+                          >
+                            Simulate Lead
+                          </button>
                         </div>
                       </div>
+
                     </div>
                   ))}
                 </div>
-              </section>
+              )}
             </div>
           </div>
         )}
@@ -459,7 +890,6 @@ const Dashboard = () => {
                 Change or Upgrade Plan
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {/* Plan Card - Free */}
                 <PlanCard
                   name="Free"
                   price="0"
@@ -470,7 +900,6 @@ const Dashboard = () => {
                   onSelect={() => handleSubscribe('Free')}
                 />
                 
-                {/* Plan Card - Basic */}
                 <PlanCard
                   name="Basic"
                   price="499"
@@ -481,7 +910,6 @@ const Dashboard = () => {
                   onSelect={() => handleSubscribe('Basic')}
                 />
                 
-                {/* Plan Card - Pro */}
                 <PlanCard
                   name="Pro"
                   price="999"
@@ -492,7 +920,6 @@ const Dashboard = () => {
                   onSelect={() => handleSubscribe('Pro')}
                 />
 
-                {/* Plan Card - Enterprise */}
                 <PlanCard
                   name="Enterprise"
                   price="2499"
@@ -695,7 +1122,171 @@ const Dashboard = () => {
         )}
       </main>
 
-      {/* --- MOCK PAYMENT MODAL --- */}
+      {/* --- ADD LISTING FORM MODAL --- */}
+      {showAddPropertyModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-100 transform transition-all animate-scaleUp p-8 space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-2xl font-extrabold text-slate-950">Add Property Listing</h3>
+              <p className="text-xs text-slate-400 font-semibold mt-0.5">Publish a property to begin matching with search scores</p>
+            </div>
+
+            <form onSubmit={handleAddProperty} className="space-y-4 text-sm font-semibold">
+              <div className="space-y-1">
+                <label className="text-xs text-slate-500 font-bold">Property Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Modern Villa with swimming pool"
+                  value={newProperty.title}
+                  onChange={e => setNewProperty({...newProperty, title: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500 font-bold">Asking Price (INR)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="e.g. 5000000"
+                    value={newProperty.price}
+                    onChange={e => setNewProperty({...newProperty, price: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500 font-bold">Location</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Whitefield, Bangalore"
+                    value={newProperty.location}
+                    onChange={e => setNewProperty({...newProperty, location: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-slate-500 font-bold">Description</label>
+                <textarea
+                  required
+                  rows="3"
+                  placeholder="Summarize structural elements and amenities details..."
+                  value={newProperty.description}
+                  onChange={e => setNewProperty({...newProperty, description: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white resize-none"
+                />
+              </div>
+
+              <div className="flex space-x-6 pt-2">
+                <label className="flex items-center space-x-2 text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newProperty.isVerified}
+                    onChange={e => setNewProperty({...newProperty, isVerified: e.target.checked})}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4.5 w-4.5"
+                  />
+                  <span>Verified Listing (+20 score)</span>
+                </label>
+
+                <label className="flex items-center space-x-2 text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newProperty.isOwnerListed}
+                    onChange={e => setNewProperty({...newProperty, isOwnerListed: e.target.checked})}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4.5 w-4.5"
+                  />
+                  <span>Owner Listed (+15 score)</span>
+                </label>
+              </div>
+
+              <div className="flex space-x-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPropertyModal(false)}
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold transition-all text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 transition-all text-center"
+                >
+                  Publish Listing
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- BOOST CHECKOUT OPTIONS MODAL --- */}
+      {showBoostModal && selectedPropertyForBoost && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 transform transition-all animate-scaleUp p-8 space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-2xl font-extrabold text-slate-900">Boost Search Visibility</h3>
+              <p className="text-xs text-slate-400 font-semibold mt-1">
+                Elevate <span className="text-indigo-600">{selectedPropertyForBoost.title}</span> using premium ranking factors.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Choose Boost Package</span>
+              
+              <div className="grid grid-cols-1 gap-3.5">
+                <BoostPackageRow
+                  title="Featured Boost (7 Days)"
+                  price="₹199"
+                  score="+40 Rank index points"
+                  onSelect={() => handlePurchaseBoost('Featured 7 Days')}
+                />
+                <BoostPackageRow
+                  title="Featured Boost (15 Days)"
+                  price="₹349"
+                  score="+40 Rank index points"
+                  onSelect={() => handlePurchaseBoost('Featured 15 Days')}
+                />
+                <BoostPackageRow
+                  title="Featured Boost (30 Days)"
+                  price="₹599"
+                  score="+40 Rank index points"
+                  onSelect={() => handlePurchaseBoost('Featured 30 Days')}
+                />
+                <BoostPackageRow
+                  title="Premium Placement Boost (30 Days)"
+                  price="₹899"
+                  score="+60 Rank index points"
+                  onSelect={() => handlePurchaseBoost('Premium Placement')}
+                />
+                <BoostPackageRow
+                  title="Homepage Placement Boost (30 Days)"
+                  price="₹1299"
+                  score="+60 Rank index points"
+                  onSelect={() => handlePurchaseBoost('Homepage Placement')}
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setShowBoostModal(false);
+                  setSelectedPropertyForBoost(null);
+                }}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold text-center transition-all"
+              >
+                Close Boost Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MOCK PAYMENT SANDBOX MODAL --- */}
       {showMockModal && mockOrderDetails && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 transform transition-all animate-scaleUp">
@@ -710,8 +1301,10 @@ const Dashboard = () => {
             <div className="p-6 space-y-6">
               <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-sm">
                 <div className="flex justify-between font-medium">
-                  <span className="text-slate-500">Plan Selected</span>
-                  <span className="text-slate-900 font-bold">{mockOrderDetails.plan}</span>
+                  <span className="text-slate-500">Upgrade Option</span>
+                  <span className="text-slate-900 font-bold">
+                    {mockType === 'subscription' ? mockOrderDetails.plan : mockOrderDetails.boostType}
+                  </span>
                 </div>
                 <div className="flex justify-between font-medium">
                   <span className="text-slate-500">Amount Due</span>
@@ -732,6 +1325,7 @@ const Dashboard = () => {
                   onClick={() => {
                     setShowMockModal(false);
                     setMockOrderDetails(null);
+                    setSelectedPropertyForBoost(null);
                   }}
                   className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-sm font-bold transition-all"
                 >
@@ -753,7 +1347,6 @@ const Dashboard = () => {
       {selectedInvoice && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 p-8">
-            {/* Invoice Header */}
             <div className="flex justify-between items-start border-b border-slate-100 pb-6">
               <div>
                 <span className="text-2xl font-extrabold text-slate-900">MERN Dashboard</span>
@@ -765,7 +1358,6 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Billing Info */}
             <div className="grid grid-cols-2 gap-4 py-6 border-b border-slate-100 text-sm">
               <div>
                 <span className="text-xs font-bold text-slate-400 uppercase block mb-1">Billed To</span>
@@ -780,7 +1372,6 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Line Items */}
             <div className="py-6 border-b border-slate-100 text-sm space-y-4">
               <span className="text-xs font-bold text-slate-400 uppercase block">Billing Items</span>
               <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -792,13 +1383,11 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Total */}
             <div className="flex justify-between items-center py-6">
               <span className="text-sm font-bold text-slate-600">Total Paid (INR)</span>
               <span className="text-2xl font-extrabold text-slate-900">₹{selectedInvoice.amount}.00</span>
             </div>
 
-            {/* Close Button */}
             <div className="mt-4">
               <button
                 onClick={() => setSelectedInvoice(null)}
@@ -856,6 +1445,25 @@ const PlanCard = ({ name, price, desc, features, isActive, loading, onSelect }) 
     >
       {isActive ? 'Current Plan' : 'Subscribe / Upgrade'}
     </button>
+  </div>
+);
+
+const BoostPackageRow = ({ title, price, score, onSelect }) => (
+  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between hover:border-indigo-200 hover:bg-indigo-50/10 transition-all group">
+    <div>
+      <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{title}</span>
+      <span className="text-xs text-slate-400 block font-semibold mt-0.5">{score}</span>
+    </div>
+    <div className="flex items-center space-x-3">
+      <span className="text-base font-extrabold text-slate-900">{price}</span>
+      <button
+        onClick={onSelect}
+        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-100 flex items-center"
+      >
+        <span>Buy Boost</span>
+        <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+      </button>
+    </div>
   </div>
 );
 

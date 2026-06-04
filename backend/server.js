@@ -32,10 +32,12 @@ mongoose.connect(process.env.MONGO_URI)
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
 const subscriptionRoutes = require('./routes/subscription');
+const propertyRoutes = require('./routes/property');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/properties', propertyRoutes);
 
 // Health check route
 app.get('/', (req, res) => {
