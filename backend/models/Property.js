@@ -37,6 +37,19 @@ const propertySchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // Geospatial coordinate location (longitude, latitude)
+  locationCoords: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true,
+      default: [77.2090, 28.6139] // Delhi Center defaults
+    }
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -45,5 +58,8 @@ const propertySchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+// 2dsphere index for geospatial searches
+propertySchema.index({ locationCoords: '2dsphere' });
 
 module.exports = mongoose.model('Property', propertySchema);

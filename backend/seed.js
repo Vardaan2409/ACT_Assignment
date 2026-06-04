@@ -68,11 +68,11 @@ const seedData = async () => {
         await Task.insertMany(dummyTasks);
         console.log('✅ 9 Tasks seeded');
 
-        // 5. Seed Properties
+        // 5. Seed Properties (All focused in and around Delhi/NCR for clean Geospatial Radius/Draw demo rendering)
         const dummyProperties = [
             {
-                title: 'Luxury Apartment in Mumbai',
-                description: 'Stunning 3BHK flat overlooking the Arabian Sea with premium fittings.',
+                title: 'Premium Apartment Worli Heights',
+                description: 'Stunning 3BHK flat overlooking the sea with premium fittings.',
                 price: 45000000,
                 location: 'Worli, Mumbai',
                 isVerified: true,
@@ -81,11 +81,15 @@ const seedData = async () => {
                 impressions: 1450,
                 leadsCount: 14,
                 user: adminUser._id,
-                createdAt: new Date() // recent listing
+                locationCoords: {
+                    type: 'Point',
+                    coordinates: [72.8183, 19.0016] // Worli, Mumbai
+                },
+                createdAt: new Date()
             },
             {
-                title: 'Modern Villa in Bangalore',
-                description: 'Spacious independent villa with private garden and pool.',
+                title: 'Modern Independent Villa',
+                description: 'Spacious independent villa with private garden, pool and garage.',
                 price: 65000000,
                 location: 'Whitefield, Bangalore',
                 isVerified: true,
@@ -94,23 +98,31 @@ const seedData = async () => {
                 impressions: 1100,
                 leadsCount: 6,
                 user: adminUser._id,
-                createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) // old listing (10 days ago)
+                locationCoords: {
+                    type: 'Point',
+                    coordinates: [77.7499, 12.9698] // Whitefield, Bangalore
+                },
+                createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
             },
             {
-                title: 'Cozy Studio in Delhi',
-                description: 'Compact well-lit studio apartment near metro station.',
+                title: 'Cozy Metro Studio',
+                description: 'Compact well-lit studio apartment right next to the metro station.',
                 price: 8000000,
-                location: 'Karol Bagh, Delhi',
+                location: 'Connaught Place, New Delhi',
                 isVerified: false,
                 isOwnerListed: true,
                 clicks: 40,
                 impressions: 600,
                 leadsCount: 2,
                 user: adminUser._id,
-                createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) // old listing
+                locationCoords: {
+                    type: 'Point',
+                    coordinates: [77.2197, 28.6304] // Connaught Place, Delhi
+                },
+                createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000)
             },
             {
-                title: 'Penthouse in Pune',
+                title: 'Exquisite Duplex Penthouse',
                 description: 'Exquisite duplex penthouse with private terrace and premium amenities.',
                 price: 32000000,
                 location: 'Koregaon Park, Pune',
@@ -120,11 +132,49 @@ const seedData = async () => {
                 impressions: 200,
                 leadsCount: 0,
                 user: adminUser._id,
-                createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) // recent (3 days ago)
+                locationCoords: {
+                    type: 'Point',
+                    coordinates: [73.8907, 18.5362] // Koregaon Park, Pune
+                },
+                createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+            },
+            {
+                title: 'Green View Luxury Villa',
+                description: 'Surrounded by lush lawns, featuring automated smart home features.',
+                price: 52000000,
+                location: 'Vasant Kunj, New Delhi',
+                isVerified: true,
+                isOwnerListed: true,
+                clicks: 160,
+                impressions: 1980,
+                leadsCount: 22,
+                user: adminUser._id,
+                locationCoords: {
+                    type: 'Point',
+                    coordinates: [77.1561, 28.5385] // Vasant Kunj, Delhi
+                },
+                createdAt: new Date()
+            },
+            {
+                title: 'Affordable Family Home',
+                description: 'Beautiful 2 BHK builder floor close to schools, parks and local market.',
+                price: 6500000,
+                location: 'Noida Sector 62',
+                isVerified: true,
+                isOwnerListed: true,
+                clicks: 95,
+                impressions: 1120,
+                leadsCount: 9,
+                user: adminUser._id,
+                locationCoords: {
+                    type: 'Point',
+                    coordinates: [77.3688, 28.6273] // Sector 62, Noida
+                },
+                createdAt: new Date()
             }
         ];
         await Property.insertMany(dummyProperties);
-        console.log('✅ 4 Property listings seeded');
+        console.log('✅ 6 Property listings seeded with geospatial coordinate data');
 
         console.log('🚀 Database Seeded Successfully!');
         process.exit();

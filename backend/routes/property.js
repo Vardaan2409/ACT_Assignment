@@ -25,6 +25,137 @@ const BOOSTS = {
   'Homepage Placement': { price: 1299, days: 30, score: 60 }
 };
 
+// Simple seed list of landmarks to mock proximity queries
+const MOCK_LANDMARKS = [
+  { name: 'St. Xavier High School', type: 'school', distance: '0.8 km' },
+  { name: 'DPS Public School', type: 'school', distance: '1.5 km' },
+  { name: 'Max Super Speciality Hospital', type: 'hospital', distance: '1.2 km' },
+  { name: 'Fortis Health Centre', type: 'hospital', distance: '2.1 km' },
+  { name: 'Central Town Park', type: 'park', distance: '0.4 km' },
+  { name: 'Eco Heritage Park', type: 'park', distance: '1.8 km' },
+  { name: 'Olive Garden Restaurant', type: 'restaurant', distance: '0.2 km' },
+  { name: 'The Golden Feast Bistro', type: 'restaurant', distance: '0.6 km' },
+  { name: 'Rajiv Chowk Metro Station', type: 'metro', distance: '0.9 km' },
+  { name: 'Connaught Place Transit Station', type: 'metro', distance: '1.4 km' },
+];
+
+// Helper to mock location-specific places
+const getNearbyPlaces = (lat, lng) => {
+  // Return places randomized slightly in distance based on latitude/longitude
+  const seed = (lat + lng) * 1000;
+  return MOCK_LANDMARKS.map((landmark, idx) => {
+    const factor = ((seed + idx) % 10) / 10;
+    const distanceVal = (0.2 + factor * 2.5).toFixed(1);
+    return {
+      ...landmark,
+      distance: `${distanceVal} km`
+    };
+  });
+};
+
+// @desc Geospatial Property Search API (radius, bounding box / polygon, queries)
+// @route GET /api/properties/search
+// @access Public
+router.get('/search', async (req, res) => {
+  try {
+    const { lat, lng, radius, polygon, search } = req.query;
+    let dbQuery = {};
+
+    // 1. Text Search filtering (title / description / location name)
+    if (search) {
+      dbQuery.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { location: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // 2. Geospatial Search
+    if (lat && lng && radius) {
+      // Radius search: radius parameter is in kilometers (convert to meters: km * 1000)
+      const radiusInMeters = parseFloat(radius) * 1000;
+      dbQuery.locationCoords = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(lng), parseFloat(lat)]
+          },
+          $maxDistance: radiusInMeters
+        }
+      };
+    } else if (polygon) {
+      // Draw area/polygon search
+      // Expected input: polygon string format: "lng1,lat1;lng2,lat2;lng3,lat3;lng1,lat1"
+      const coordinates = polygon.split(';').map(pt => {
+        const [lngVal, latVal] = pt.split(',');
+        return [parseFloat(lngVal), parseFloat(latVal)];
+      });
+
+      // Ensure the polygon forms a closed ring (first coordinate equals last)
+      if (coordinates.length > 0 && 
+          (coordinates[0][0] !== coordinates[coordinates.length - 1][0] || 
+           coordinates[0][1] !== coordinates[coordinates.length - 1][1])) {
+        coordinates.push(coordinates[0]);
+      }
+
+      dbQuery.locationCoords = {
+        $geoWithin: {
+          $geometry: {
+            type: 'Polygon',
+            coordinates: [coordinates]
+          }
+        }
+      };
+    }
+
+    const properties = await Property.find(dbQuery).populate('user', 'name email');
+
+    // Attach Active Boost stats & Mock Nearby Landmarks
+    const activeBoosts = await PropertyBoost.find({ endDate: { $gte: new Date() } });
+    const activeBoostMap = {};
+    activeBoosts.forEach(boost => {
+      if (!activeBoostMap[boost.propertyId.toString()] || activeBoostMap[boost.propertyId.toString()].boostScore < boost.boostScore) {
+        activeBoostMap[boost.propertyId.toString()] = boost;
+      }
+    });
+
+    const enriched = properties.map(property => {
+      let score = 0;
+      if (property.isVerified) score += 20;
+      if (property.isOwnerListed) score += 15;
+
+      const activeBoost = activeBoostMap[property._id.toString()];
+      let activeBoostInfo = null;
+      if (activeBoost) {
+        score += activeBoost.boostScore;
+        activeBoostInfo = {
+          boostType: activeBoost.boostType,
+          endDate: activeBoost.endDate,
+          boostScore: activeBoost.boostScore
+        };
+      }
+
+      const pCoords = property.locationCoords?.coordinates || [77.2090, 28.6139];
+      const nearby = getNearbyPlaces(pCoords[1], pCoords[0]);
+
+      return {
+        ...property.toObject(),
+        rankingScore: score,
+        activeBoost: activeBoostInfo,
+        nearbyPlaces: nearby
+      };
+    });
+
+    // Sort by rankingScore descending
+    enriched.sort((a, b) => b.rankingScore - a.rankingScore);
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error conducting geospatial search:', error);
+    res.status(500).json({ message: 'Error processing map geospatial search' });
+  }
+});
+
 // @desc Fetch all properties sorted by weighted search ranking algorithm
 // @route GET /api/properties
 // @access Public
@@ -76,10 +207,14 @@ router.get('/', async (req, res) => {
       property.impressions += Math.floor(Math.random() * 5) + 1;
       property.save();
 
+      const pCoords = property.locationCoords?.coordinates || [77.2090, 28.6139];
+      const nearby = getNearbyPlaces(pCoords[1], pCoords[0]);
+
       return {
         ...property.toObject(),
         rankingScore: score,
-        activeBoost: activeBoostInfo
+        activeBoost: activeBoostInfo,
+        nearbyPlaces: nearby
       };
     });
 
@@ -123,7 +258,7 @@ router.post('/:id/interact', async (req, res) => {
 // @access Private
 router.post('/', protect, async (req, res) => {
   try {
-    const { title, description, price, location, isVerified, isOwnerListed } = req.body;
+    const { title, description, price, location, isVerified, isOwnerListed, longitude, latitude } = req.body;
 
     const property = await Property.create({
       title,
@@ -132,6 +267,13 @@ router.post('/', protect, async (req, res) => {
       location,
       isVerified: !!isVerified,
       isOwnerListed: !!isOwnerListed,
+      locationCoords: {
+        type: 'Point',
+        coordinates: [
+          longitude ? parseFloat(longitude) : 77.2090,
+          latitude ? parseFloat(latitude) : 28.6139
+        ]
+      },
       user: req.user._id
     });
 
