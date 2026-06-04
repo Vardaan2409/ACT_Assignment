@@ -1,7 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import API from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
+import {
+  useDashboard,
+  useBilling,
+  useAnalytics,
+  useAllProperties,
+  useMyBoosts,
+  useCreateProperty,
+  useActivityLogs
+} from '../utils/useQueryHooks';
 import {
   Users,
   Briefcase,
@@ -31,21 +40,7 @@ import {
 } from 'lucide-react';
 
 const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'billing', 'analytics', 'properties', 'boosts'
-  const [data, setData] = useState({ leads: [], tasks: [], users: [] });
-  const [billing, setBilling] = useState({
-    subscription: { plan: 'Free', status: 'active', startDate: new Date(), endDate: null },
-    transactions: [],
-    invoices: [],
-    razorpayKeyId: ''
-  });
-  const [analytics, setAnalytics] = useState(null);
-  
-  // Properties state
-  const [properties, setProperties] = useState([]);
-  const [myBoosts, setMyBoosts] = useState({ listings: [], boostConfig: {} });
-  
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'billing', 'analytics', 'properties', 'boosts', 'logs'
   const [error, setError] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -70,71 +65,17 @@ const Dashboard = () => {
 
   const { user } = useAuth();
 
-  const fetchDashboardData = async () => {
-    try {
-      const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const { data } = await API.get('/api/dashboard', config);
-      setData(data);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to fetch dashboard data');
-    }
-  };
+  // --- React Query Hooks Integration ---
+  const { data, isLoading: loadingDashboard } = useDashboard(user?.token);
+  const { data: billing = { subscription: { plan: 'Free', status: 'active', startDate: new Date(), endDate: null }, transactions: [], invoices: [], razorpayKeyId: '' }, isLoading: loadingBilling } = useBilling(user?.token);
+  const { data: analytics = null, isLoading: loadingAnalytics } = useAnalytics(user?.token);
+  const { data: properties = [], isLoading: loadingProperties } = useAllProperties();
+  const { data: myBoosts = { listings: [], boostConfig: {} }, isLoading: loadingBoosts } = useMyBoosts(user?.token);
+  const { data: activityLogs = [], isLoading: loadingLogs } = useActivityLogs(user?.token);
 
-  const fetchBillingData = async () => {
-    try {
-      const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const { data } = await API.get('/api/subscription/status', config);
-      setBilling(data);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to fetch subscription data');
-    }
-  };
+  const createPropertyMutation = useCreateProperty(user?.token);
 
-  const fetchAnalyticsData = async () => {
-    try {
-      const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const { data } = await API.get('/api/subscription/analytics', config);
-      setAnalytics(data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchPropertiesData = async () => {
-    try {
-      const { data } = await API.get('/api/properties');
-      setProperties(data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchMyBoostsData = async () => {
-    try {
-      const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const { data } = await API.get('/api/properties/my-boosts', config);
-      setMyBoosts(data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await Promise.all([
-        fetchDashboardData(),
-        fetchBillingData(),
-        fetchAnalyticsData(),
-        fetchPropertiesData(),
-        fetchMyBoostsData()
-      ]);
-      setLoading(false);
-    };
-    init();
-  }, [user.token]);
+  const loading = loadingDashboard || loadingBilling || loadingAnalytics || loadingProperties || loadingBoosts || loadingLogs;
 
   const handleSubscribe = async (planName) => {
     try {
@@ -179,7 +120,6 @@ const Dashboard = () => {
               },
               config
             );
-            await Promise.all([fetchBillingData(), fetchAnalyticsData()]);
             alert('Subscription payment verified successfully! 🚀');
           } catch (err) {
             console.error(err);
@@ -205,8 +145,7 @@ const Dashboard = () => {
     e.preventDefault();
     try {
       setError('');
-      const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      await API.post('/api/properties', newProperty, config);
+      await createPropertyMutation.mutateAsync(newProperty);
       setShowAddPropertyModal(false);
       setNewProperty({
         title: '',
@@ -216,7 +155,6 @@ const Dashboard = () => {
         isVerified: false,
         isOwnerListed: false
       });
-      await Promise.all([fetchPropertiesData(), fetchMyBoostsData()]);
       alert('Property published successfully!');
     } catch (err) {
       console.error(err);
@@ -275,7 +213,6 @@ const Dashboard = () => {
               },
               config
             );
-            await Promise.all([fetchPropertiesData(), fetchMyBoostsData(), fetchAnalyticsData()]);
             alert('Payment verified and Listing Boosted successfully! ⚡');
           } catch (err) {
             console.error(err);
@@ -314,7 +251,6 @@ const Dashboard = () => {
           },
           config
         );
-        await Promise.all([fetchBillingData(), fetchAnalyticsData()]);
         alert(verifyData.message || 'Mock payment verified successfully!');
       } else if (mockType === 'boost') {
         const { data: verifyData } = await API.post(
@@ -328,7 +264,6 @@ const Dashboard = () => {
           },
           config
         );
-        await Promise.all([fetchPropertiesData(), fetchMyBoostsData(), fetchAnalyticsData()]);
         alert(verifyData.message || 'Mock boost payment verified successfully! ⚡');
       }
     } catch (err) {
@@ -344,13 +279,12 @@ const Dashboard = () => {
   const trackInteraction = async (propertyId, action) => {
     try {
       await API.post(`/api/properties/${propertyId}/interact`, { action });
-      await fetchPropertiesData();
     } catch (err) {
       console.error(err);
     }
   };
 
-  if (loading) {
+  if (loading || !data) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         <Navbar />
@@ -454,6 +388,18 @@ const Dashboard = () => {
           >
             <TrendingUp className="w-4 h-4" />
             <span>📈 Platform Analytics</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`pb-4 text-sm font-bold tracking-wide transition-all flex items-center space-x-1.5 ${
+              activeTab === 'logs'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            <span>📜 Activity Logs</span>
           </button>
         </div>
 
@@ -1118,6 +1064,70 @@ const Dashboard = () => {
                 Waiting for analytics payload...
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'logs' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/50 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">System Activity Logs</h2>
+                <p className="text-sm text-slate-500 font-medium mt-0.5">
+                  Real-time audit trail of actions performed across Urban Homely.
+                </p>
+              </div>
+              <div className="flex items-center space-x-2 bg-indigo-50 text-indigo-700 font-bold px-4 py-2 rounded-2xl text-xs">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+                <span>Live Feed Active</span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden animate-slideUp">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50">
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Time</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Action</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Actor</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Entity</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm font-semibold">
+                    {activityLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-12 text-center text-slate-400 font-bold">
+                          No activities recorded in the system yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      activityLogs.map((log) => (
+                        <tr key={log._id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">
+                            {new Date(log.createdAt).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-700">
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-800">
+                            {log.userId?.name || log.userId?.email || 'System'}
+                          </td>
+                          <td className="px-6 py-4 text-slate-500 text-xs">
+                            {log.entityType} ({log.entityId?.substring(0, 8)}...)
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 font-medium">
+                            {log.description}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </main>

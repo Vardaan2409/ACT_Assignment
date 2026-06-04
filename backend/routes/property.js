@@ -5,6 +5,7 @@ const Razorpay = require('razorpay');
 const { protect } = require('../middleware/auth');
 const Property = require('../models/Property');
 const PropertyBoost = require('../models/PropertyBoost');
+const eventBus = require('../utils/events');
 
 // Initialize Razorpay
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_mockKeyId123';
@@ -277,10 +278,52 @@ router.post('/', protect, async (req, res) => {
       user: req.user._id
     });
 
+    // Broadcast PROPERTY_CREATED sync event
+    await eventBus.publish({
+      action: 'PROPERTY_CREATED',
+      userId: req.user._id,
+      entityType: 'Property',
+      entityId: property._id,
+      description: `${property.title} in ${property.location}`
+    });
+
     res.status(201).json(property);
   } catch (error) {
     console.error('Error creating property:', error);
     res.status(500).json({ message: 'Error publishing listing' });
+  }
+});
+
+// @desc Delete a property listing
+// @route DELETE /api/properties/:id
+// @access Private
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const property = await Property.findById(req.params.id);
+    if (!property) {
+      return res.status(404).json({ message: 'Property listing not found' });
+    }
+
+    // Ensure user is owner of the listing
+    if (property.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to delete this listing' });
+    }
+
+    await Property.deleteOne({ _id: property._id });
+
+    // Broadcast PROPERTY_DELETED sync event
+    await eventBus.publish({
+      action: 'PROPERTY_DELETED',
+      userId: req.user._id,
+      entityType: 'Property',
+      entityId: property._id,
+      description: property.title
+    });
+
+    res.json({ message: 'Listing deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting property:', error);
+    res.status(500).json({ message: 'Error deleting listing' });
   }
 });
 
@@ -387,6 +430,15 @@ router.post('/boost/verify', protect, async (req, res) => {
       property.leadsCount += Math.floor(Math.random() * 10) + 5 * multiplier;
       await property.save();
     }
+
+    // Broadcast BOOST_CREATED event to sync dashboards and analytics
+    await eventBus.publish({
+      action: 'BOOST_CREATED',
+      userId: req.user._id,
+      entityType: 'PropertyBoost',
+      entityId: boost._id,
+      description: `${boostType} activated for ${property ? property.title : 'property'}`
+    });
 
     res.json({
       message: 'Payment verified and listing boosted successfully! ⚡',

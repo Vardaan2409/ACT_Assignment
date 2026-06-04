@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User as UserIcon, LayoutDashboard, Compass } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -39,6 +40,8 @@ const Navbar = () => {
       <div className="flex items-center space-x-4">
         {user && (
           <>
+            <NotificationBell />
+            
             <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-50 rounded-full border border-gray-200">
               <UserIcon className="w-4 h-4 text-gray-500" />
               <span className="text-sm font-medium text-gray-700">{user.name}</span>

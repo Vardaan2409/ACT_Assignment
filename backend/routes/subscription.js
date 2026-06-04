@@ -7,6 +7,7 @@ const Subscription = require('../models/Subscription');
 const Transaction = require('../models/Transaction');
 const Invoice = require('../models/Invoice');
 const User = require('../models/User');
+const eventBus = require('../utils/events');
 
 // Initialize Razorpay
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_mockKeyId123';
@@ -148,6 +149,15 @@ const activateSubscription = async (userId, plan, transactionId, amount, userEma
       email: userEmail
     },
     date: startDate
+  });
+
+  // 4. Publish Event
+  await eventBus.publish({
+    action: 'SUBSCRIPTION_CREATED',
+    userId,
+    entityType: 'Subscription',
+    entityId: subscription._id,
+    description: `User activated ${plan} Plan`
   });
 
   return { subscription, invoice };

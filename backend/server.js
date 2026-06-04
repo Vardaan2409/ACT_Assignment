@@ -3,9 +3,9 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const rateLimit = require('express-rate-limit');
-
-// Trust proxy (for correct IP behind Render/Vercel/Nginx)
-// app.set called after app init below
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const eventBus = require('./utils/events');
 
 dotenv.config();
 
@@ -14,10 +14,10 @@ const app = express();
 // Trust proxy
 app.set('trust proxy', 1);
 
-// Global rate limiter — 100 req / 15 min per IP
+// Global rate limiter
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 150,
   message: { message: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -41,8 +41,27 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB connected successfully'))
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
-    console.error('Check if your MONGO_URI is correct and IP is whitelisted in Atlas.');
   });
+
+// HTTP Server wrapper for WebSocket support
+const server = http.createServer(app);
+
+// WebSocket Server
+const wss = new WebSocketServer({ server });
+eventBus.setWebSocketServer(wss);
+
+wss.on('connection', (ws) => {
+  console.log('🔌 Client connected to Live Sync WebSocket Hub');
+  
+  ws.send(JSON.stringify({
+    type: 'CONNECTION_ACK',
+    message: 'Successfully connected to Live Sync Event Bus'
+  }));
+
+  ws.on('close', () => {
+    console.log('🔌 Client disconnected from Live Sync WebSocket Hub');
+  });
+});
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -50,20 +69,22 @@ const dashboardRoutes = require('./routes/dashboard');
 const subscriptionRoutes = require('./routes/subscription');
 const propertyRoutes = require('./routes/property');
 const otpRoutes = require('./routes/otp');
+const notificationRoutes = require('./routes/notifications');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/otp', otpRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check route
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', message: 'MERN Dashboard API is running 🚀' });
+  res.json({ status: 'ok', message: 'MERN Dashboard API with Real-time synchronization is running 🚀' });
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
