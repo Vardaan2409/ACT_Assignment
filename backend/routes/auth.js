@@ -24,6 +24,8 @@ router.post('/login', async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || null,
+        isPhoneVerified: user.isPhoneVerified || false,
         token: generateToken(user._id),
       });
     } else {
@@ -40,7 +42,7 @@ router.post('/login', async (req, res) => {
 // @access Public
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phone } = req.body;
 
     const userExists = await User.findOne({ email });
 
@@ -48,10 +50,19 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
+    // Normalize phone to E.164 without '+' (e.g. "919876543210")
+    let normalizedPhone = null;
+    if (phone) {
+      const digits = phone.replace(/\D/g, '');
+      if (digits.length === 10) normalizedPhone = `91${digits}`;
+      else if (digits.length === 12 && digits.startsWith('91')) normalizedPhone = digits;
+    }
+
     const user = await User.create({
       name,
       email,
       password,
+      phone: normalizedPhone,
     });
 
     if (user) {
@@ -59,6 +70,8 @@ router.post('/register', async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || null,
+        isPhoneVerified: user.isPhoneVerified || false,
         token: generateToken(user._id),
       });
     } else {

@@ -15,6 +15,15 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  phone: {
+    type: String,
+    default: null,
+    // Stored in E.164 format without +, e.g. "919876543210"
+  },
+  isPhoneVerified: {
+    type: Boolean,
+    default: false,
+  },
 }, {
   timestamps: true,
 });
